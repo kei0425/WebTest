@@ -1,0 +1,13 @@
+#!/bin/bash
+
+RHINO_HOME=~/bin/rhino1_7R4
+SELENIUM_HOME=~/bin/selenium-2.25.0
+DIRNAME=`dirname $0`
+
+if [ $# -ne 0 ]; then
+   java -cp "$RHINO_HOME/js.jar:$SELENIUM_HOME/selenium-java-2.25.0.jar:$SELENIUM_HOME/libs/*" org.mozilla.javascript.tools.shell.Main $DIRNAME/load.js $DIRNAME/WebTestMain.js $*
+   exit 0
+fi
+
+java -cp "$RHINO_HOME/js.jar:$SELENIUM_HOME/selenium-java-2.25.0.jar:$SELENIUM_HOME/libs/*" org.mozilla.javascript.tools.shell.Main
+

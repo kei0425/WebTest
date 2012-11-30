@@ -10,11 +10,11 @@ var WebTest = function (params) {
     /**
      * タイムアウト
      */
-    this.timeout = params.timeout || 2;
+    this.timeout = params.timeout || 5;
     /**
      * ドライバー
      */
-    this.driver = params.driver || new FirefoxDriver();
+    this.driver = params.driver;
     /**
      * ベースURL
      */
@@ -23,10 +23,6 @@ var WebTest = function (params) {
      * キャプチャ
      */
     this.isCapture = params.capture || false;
-    /**
-     * wait
-     */
-    this.wait = new WebDriverWait(this.driver, this.timeout);
 
     // テスト読み込み
     this.loadTest = function (path) {
@@ -48,6 +44,66 @@ var WebTest = function (params) {
                 };
             }(testName);
         }
+    };
+
+    /**
+     * ドキュメント作成
+     */
+    this.makeDoc = function () {
+        this.isMakeDoc = true;
+
+        var
+        testList = []
+        ,testName
+        ,i
+        ,makeDocMain = function (testName) {
+            var
+            testList = self.testPattern[testName]
+            ,testData
+            ,i
+            ;
+
+            for (i = 0; i < testList.length; i++) {
+                testData = testList[i];
+                self.output('    ' + (i + 1) + ' '
+                            + self[testData.command[0]](testData)
+                            .replace(/\r?\n/g, '\\n'));
+            }
+        }
+        ;
+
+        // テストリストの作成
+        for (testName in this.testPattern) {
+            if (/^\d/.test(testName)) {
+                testList.push(testName);
+            }
+        }
+
+        testList.sort(function (a,b) {
+                          var
+                          num_a = a.match(/^\d+/),
+                          num_b = b.match(/^\d+/)
+                          ;
+
+                          return num_b - num_a;
+                      });
+
+        if (this.testPattern['setUp']) {
+            self.output('大項目:setUp');
+            makeDocMain('setUp');
+        }
+        if (this.testPattern['tearDown']) {
+            self.output('大項目:tearDown');
+            makeDocMain('tearDown');
+        }
+
+        for (i = 0; i < testList.length; i++) {
+            testName = testList[i];
+            self.output('大項目:' + testName);
+            makeDocMain(testName);
+        }
+        
+        this.isMakeDoc = false;
     };
 
     // エレメント取得
@@ -77,8 +133,9 @@ var WebTest = function (params) {
             }
             // 見つかるまで待つ
             try {
-                element.element = this.wait.until(
-                    ExpectedConditions.presenceOfElementLocated(by));
+                element.element = 
+                    new WebDriverWait(this.driver, this.timeout).until(
+                        ExpectedConditions.presenceOfElementLocated(by));
             } catch (x) {
                 throw new Error("要素がみつかりません:" + path
                                 + '(' + x.message + ')');
@@ -136,24 +193,56 @@ var WebTest = function (params) {
         print ('    1..' + testList.length);
     };
 
+    /**
+     * エレメントを読み易い形に変更
+     */
+    this.makeReadableElement = function (path) {
+        return path.split('/')
+            .map(function(x){return '「' + x + '」';})
+            .join('の');
+    };
+
     // コマンド一覧
     this.open = function (testData) {
+        if (this.isMakeDoc) {
+            return 'ベースアドレス+「' + testData.command[1] + '」を開く。';
+        }
+
         this.driver.get(this.baseUrl + testData.command[1]);
+        
+        return null;
     };
     this.click = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1])
+                + 'をクリックする。';
+        }
         this.getElement(testData.command[1]).click();
+
+        return null;
     };
     this.quit = function (testData) {
+        if (this.isMakeDoc) {
+            return 'ブラウザを終了する。';
+        }
+
         this.driver.quit();
+
+        return null;
     };
     this.isEnabled = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1]) + 'が'
+                + (testData.command[2] ? '有効' : '無効') + 'であること。';
+        }
+
         var
         element = this.getElement(testData.command[1])
         ,isEnabled = function () {
             return element.isEnabled() && element.isDisplayed();  
         };
         try {
-            this.wait.until(
+            new WebDriverWait(this.driver, this.timeout).until(
                 new com.google.common.base.Function(
                     {apply : function () {
                          if (isEnabled() == testData.command[2]) {
@@ -165,12 +254,22 @@ var WebTest = function (params) {
         } catch (x) {
         }
         this.assertEquals(testData.command[2], isEnabled());
+
+        return null;
     };
     this.alert = function (testData) {
+        if (this.isMakeDoc) {
+            return 'アラートダイアログ「' + testData.command[1]
+                + '」が出現すること。（その後「'
+                + ( testData.command[2] ? 'OK' : 'キャンセル')
+                + '」をクリック）';
+        }
+
         // アラートがでるまで待つ
         var alert;
         try {
-            alert = this.wait.until(ExpectedConditions.alertIsPresent());
+            alert = new WebDriverWait(this.driver, this.timeout).until(
+                ExpectedConditions.alertIsPresent());
         } catch (x) {
             throw new Error('ダイアログが出現しません。');
         }
@@ -183,8 +282,20 @@ var WebTest = function (params) {
         else {
             alert.dismiss();
         }
+
+        return null;
     };
     this.getText = function (testData) {
+        if (this.isMakeDoc) {
+            if (testData.command[2] == '') {
+                return this.makeReadableElement(testData.command[1])
+                    + 'になにも表示されていないこと。';
+            }
+            else {
+                return this.makeReadableElement(testData.command[1])
+                    + 'に「' + testData.command[2] + '」が表示されていること。';
+            }
+        }
         var
         element = this.getElement(testData.command[1])
         ,getText = function () {
@@ -198,7 +309,7 @@ var WebTest = function (params) {
         }
         ;
         try {
-            this.wait.until(
+            new WebDriverWait(this.driver, this.timeout).until(
                 new com.google.common.base.Function(
                     {apply : function () {
                          if (getText() == testData.command[2]) {
@@ -210,16 +321,29 @@ var WebTest = function (params) {
         } catch (x) {
         }
         this.assertEquals(testData.command[2], getText());
+
+        return null;
     };
     this.dragAndDrop = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1])
+                + 'から'
+                + this.makeReadableElement(testData.command[2])
+                + 'にドラッグアンドドロップする。';
+        }
         var
         element1 = this.getElement(testData.command[1])
         ,element2 = this.getElement(testData.command[2]);
 
         new Actions(this.driver).clickAndHold(element1)
             .moveToElement(element2).release(element2).build().perform();
+
+        return null;
     };
     this.capture = function (testData, testName, no) {
+        if (this.isMakeDoc) {
+            return '画面キャプチャ。';
+        }
         var
         baseFilename = this.initialize.baseDir + testName + no
         ,out
@@ -229,7 +353,7 @@ var WebTest = function (params) {
         try {
             // アラートダイアログ出現中はとれない
             this.driver.switchTo().alert();
-            return;
+            return null;
         } catch (x) {
 
         }
@@ -256,8 +380,16 @@ var WebTest = function (params) {
         }
 
         this.output('キャプチャ:' + baseFilename);
+
+        return null;
     };
     this.selectByValue = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1])
+                + 'の「'
+                + testData.command[2]
+                + '」を選択する。';
+        }
         var
         selectElement = this.getElement(testData.command[1])
         ;
@@ -267,13 +399,23 @@ var WebTest = function (params) {
         }
 
         new Select(selectElement).selectByValue(testData.command[2]);
+
+        return null;
     };
     this.input = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1])
+                + 'に「'
+                + testData.command[2]
+                + '」を入力する。';
+        }
         var
         element = this.getElement(testData.command[1])
         ;
 
         element.sendKeys(testData.command[1]);
+
+        return null;
     };
 };
 WebTest.prototype = new UnitTest();
