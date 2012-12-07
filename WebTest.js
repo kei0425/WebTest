@@ -1,8 +1,17 @@
 load("UnitTest.js");
 importPackage(org.openqa.selenium);
-importPackage(org.openqa.selenium.firefox);
 importPackage(org.openqa.selenium.support.ui);
 importPackage(org.openqa.selenium.interactions);
+
+function convertJavaArrayToJsArray(javaArray) {
+    var
+    jsArray = []
+    ,i;
+    for (i = 0; i < javaArray.size(); i++) {
+        jsArray.push(javaArray.get(i));
+    }
+    return jsArray;
+}
 
 var WebTest = function (params) {
     var self = this;
@@ -23,6 +32,10 @@ var WebTest = function (params) {
      * キャプチャ
      */
     this.isCapture = params.capture || false;
+    /**
+     * テスト再施行最大数
+     */
+    this.retryMax = params.retryMax || 0;
 
     // テスト読み込み
     this.loadTest = function (path) {
@@ -35,6 +48,7 @@ var WebTest = function (params) {
         this.initialize = testJson.initialize;
         this.elements = testJson.initialize.elements;
         this.baseUrl = testJson.initialize.baseUrl;
+        this.baseDir = testJson.initialize.baseDir;
         this.testPattern = testJson.test;
         for (testName in testJson.test) {
             this[testName] = function(name) {
@@ -159,10 +173,22 @@ var WebTest = function (params) {
         ,i
         ,status
         ,message
+        ,retryIndex = -1
+        ,retryCount
+        ,retryCommand = [
+            'open'
+            ,'click'
+            ,'dragAndDrop'
+        ]
         ;
 
         for (i = 0; i < testList.length; i++) {
             testData = testList[i];
+
+            if (self.isCapture && testData.command[0] != 'alert') {
+                self.capture(testData, testName, i + 1);
+            }
+
             try {
                 if (self[testData.command[0]]) {
                     // コマンド実行
@@ -179,15 +205,26 @@ var WebTest = function (params) {
                 self.capture(testData, testName, i + 1);
             }
 
-            if (self.isCapture) {
-                self.capture(testData, testName, i + 1);
-            }
-
             print ('    ' + status + ' ' + (i + 1) + ' - ' + testData.comment
                    + message);
-            if (status != 'ok' && !testData.error_continue) {
-                print ('    1..' + (i + 1));
-                throw new Error('中断します。');
+            if (status != 'ok') {
+                if (retryIndex >= 0 && !testData.retryMax > retryCount) {
+                    retryCount++;
+                    print ('retryします。(' + retryCount + '回目)');
+                    i = retryIndex - 1;
+                }
+                else if (!testData.error_continue) {
+                    print ('    1..' + (i + 1));
+                    throw new Error('中断します。');
+                }
+            }
+
+            if (retryCommand.indexOf(testData.command[0]) >= 0) {
+                // retryポイント設定
+                if (retryIndex != i) {
+                    retryIndex = i;
+                    retryCount = 0;
+                }
             }
         }
         print ('    1..' + testList.length);
@@ -345,23 +382,24 @@ var WebTest = function (params) {
             return '画面キャプチャ。';
         }
         var
-        baseFilename = this.initialize.baseDir + testName + no
+        baseFilename = this.baseDir + testName + no
         ,out
         ,tmpfile
         ;
 
-        try {
-            // アラートダイアログ出現中はとれない
-            this.driver.switchTo().alert();
-            return null;
-        } catch (x) {
-
-        }
-
         // 画面キャプチャ
         try {
             new java.io.File(baseFilename + '.png').delete();
-            tmpfile = this.driver.getScreenshotAs(OutputType.FILE);
+            
+            if (this.driver.getScreenshotAs) {
+                // ローカルの場合
+                tmpfile = this.driver.getScreenshotAs(OutputType.FILE);
+            }
+            else {
+                // リモートの場合
+                tmpfile = new Augmenter().augment(this.driver)
+                    .getScreenshotAs(OutputType.FILE);
+            }
             new java.io.File(tmpfile).renameTo(
                 new java.io.File(baseFilename + '.png'));
         } catch (x) {
@@ -394,8 +432,11 @@ var WebTest = function (params) {
         selectElement = this.getElement(testData.command[1])
         ;
 
-        if (selectElement.getTagName() != 'select') {
-            throw new Error(testData.command[1] + 'はselectではありません。');
+        try {
+            selectElement = selectElement
+                .findElementByXPath('descendant-or-self::select');
+        } catch (x) {
+            throw new Error(testData.command[1] + 'にはselectはありません。');
         }
 
         new Select(selectElement).selectByValue(testData.command[2]);
@@ -414,6 +455,67 @@ var WebTest = function (params) {
         ;
 
         element.sendKeys(testData.command[1]);
+
+        return null;
+    };
+    this.getSelected = function (testData) {
+        if (this.isMakeDoc) {
+            return this.makeReadableElement(testData.command[1])
+                + 'が「'
+                + testData.command[2]
+                + '」を選択していること。';
+        }
+        var
+        baseElement = this.getElement(testData.command[1])
+        ,selectElements
+        ,text = ''
+        ;
+
+        selectElements = baseElement
+            .findElementsByXPath('descendant-or-self::select');
+        if (selectElements.size() > 0) {
+            // selectが存在する場合
+            text = convertJavaArrayToJsArray(
+                new Select(selectElements.get(0))
+                    .getAllSelectAllSelectedOptions()).map(
+                        function(x) {
+                            return x.getText();
+                        });
+        }
+        else {
+            selectElements = baseElement
+                .findElementsByXPath('descendant-or-self::tbody');
+            if (selectElements.size() > 0) {
+                // tbodyが存在する場合
+                try {
+                    new WebDriverWait(this.driver, this.timeout).until(
+                        new com.google.common.base.Function(
+                            {apply : function () {
+                                 if (baseElement.findElementsByXPath(
+                                         "descendant-or-self::tr[contains(@class, 'select')]").size() > 0) {
+                                     return true;
+                                 }
+                                 return null;
+                             }
+                            }));
+                } catch (x) {
+                }
+                text = convertJavaArrayToJsArray(
+                    baseElement.findElementsByXPath(
+                        "descendant-or-self::tr[contains(@class, 'select')]"))
+                    .map(
+                        function(x) {
+                            return x.getText();
+                        }
+                    );
+            }
+            else {
+                throw new Error(testData.command[1]
+                                + 'には選択できる要素はありません。');
+            }
+        }
+
+        this.assertEquals(testData.command[2], text);
 
         return null;
     };
