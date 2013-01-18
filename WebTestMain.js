@@ -1,6 +1,9 @@
 importPackage(org.openqa.selenium.remote);
 importPackage(org.openqa.selenium.firefox);
 importPackage(org.openqa.selenium.ie);
+importPackage(org.openqa.selenium.chrome);
+
+var isExec = true;
 
 try {
 
@@ -8,7 +11,9 @@ try {
     var isQuit = false;
     var isCapture = false;
     var isMakeDoc = false;
+    var isCommandList = false;
     var retryMax = 3;
+    var sync_time = 0;
     var webTest;
     var seleniumrcaddr = 'http://test-cross3.nikkei-r.local:4444/wd/hub';
 
@@ -22,9 +27,12 @@ try {
             else {
                 return new FirefoxDriver();
             }
-        },
-        'internet explorer' : function (browser) {
+        }
+        ,'internet explorer' : function (browser) {
             return new InternetExplorerDriver();
+        }
+        ,'chrome' : function (browser) {
+            return new ChromeDriver();
         }
     };
 
@@ -41,15 +49,27 @@ try {
                 continue;
             }
             else if (arguments[0] == '--retry') {
-                if (!isNan(arguments[1])) {
+                if (!isNaN(arguments[1])) {
                     arguments.shift();
                     retryMax = arguments.shift();
+                    continue;
+                }
+            }
+            else if (arguments[0] == '--sync') {
+                if (!isNaN(arguments[1])) {
+                    arguments.shift();
+                    sync_time = arguments.shift();
                     continue;
                 }
             }
             else if (arguments[0] == '--doc') {
                 arguments.shift();
                 isMakeDoc = true;
+                continue;
+            }
+            else if (arguments[0] == '--commandlist') {
+                arguments.shift();
+                isCommandList = true;
                 continue;
             }
             break;
@@ -65,6 +85,12 @@ try {
 
     load("WebTest.js");
     webTest = new WebTest({capture : isCapture, retryMax : retryMax});
+    if (isCommandList) {
+        webTest.outputCommandList();
+    }
+    if (arguments.length == 0) {
+        quit();
+    }
     webTest.loadTest(testfile);
 
     if (isMakeDoc) {
@@ -74,12 +100,23 @@ try {
         }
     }
     else {
+
         (function () {
-             var i
+             var
+             i
              ,key
              ,capability
              ,browser
              ;
+             // ブロック防止用定期出力
+             if (sync_time > 0) {
+                 spawn(
+                     function(x) {
+                         while (isExec) {
+                             java.lang.Thread.sleep(sync_time);print("#");
+                         }
+                     });
+             }
              
              for (i = 0; i < webTest.initialize.browser.length; i++) {
                  browser = webTest.initialize.browser[i];
@@ -115,4 +152,6 @@ try {
     print (x.message);
     print (x.fileName);
     print (x.lineNumber);
+} finally {
+    isExec = false;
 }

@@ -3,6 +3,11 @@ importPackage(org.openqa.selenium);
 importPackage(org.openqa.selenium.support.ui);
 importPackage(org.openqa.selenium.interactions);
 
+importPackage(org.openqa.selenium.remote);
+importPackage(org.openqa.selenium.firefox);
+importPackage(org.openqa.selenium.ie);
+
+
 function convertJavaArrayToJsArray(javaArray) {
     var
     jsArray = []
@@ -36,8 +41,14 @@ var WebTest = function (params) {
      * テスト再施行最大数
      */
     this.retryMax = params.retryMax || 0;
+    /**
+     * カスタムコマンド
+     */
+    this.customFunction = {};
 
-    // テスト読み込み
+    /**
+     *  テスト読み込み
+     */
     this.loadTest = function (path) {
         var
         testJson
@@ -45,13 +56,13 @@ var WebTest = function (params) {
         ;
 
         eval('testJson = ' + readFile(path));
-        this.initialize = testJson.initialize;
-        this.elements = testJson.initialize.elements;
-        this.baseUrl = testJson.initialize.baseUrl;
-        this.baseDir = testJson.initialize.baseDir;
-        this.testPattern = testJson.test;
+        self.initialize = testJson.initialize;
+        self.elements = testJson.initialize.elements;
+        self.baseUrl = testJson.initialize.baseUrl;
+        self.baseDir = testJson.initialize.baseDir;
+        self.testPattern = testJson.test;
         for (testName in testJson.test) {
-            this[testName] = function(name) {
+            self[testName] = function(name) {
                 return function () {
                     print('実行:' + name);
                     self.executeTest(name);
@@ -64,7 +75,7 @@ var WebTest = function (params) {
      * ドキュメント作成
      */
     this.makeDoc = function () {
-        this.isMakeDoc = true;
+        self.isMakeDoc = true;
 
         var
         testList = []
@@ -80,14 +91,15 @@ var WebTest = function (params) {
             for (i = 0; i < testList.length; i++) {
                 testData = testList[i];
                 self.output('    ' + (i + 1) + ' '
-                            + self[testData.command[0]](testData)
+                            + self.commandList[testData.command[0]]
+                            .func(testData)
                             .replace(/\r?\n/g, '\\n'));
             }
         }
         ;
 
         // テストリストの作成
-        for (testName in this.testPattern) {
+        for (testName in self.testPattern) {
             if (/^\d/.test(testName)) {
                 testList.push(testName);
             }
@@ -102,11 +114,11 @@ var WebTest = function (params) {
                           return num_b - num_a;
                       });
 
-        if (this.testPattern['setUp']) {
+        if (self.testPattern['setUp']) {
             self.output('大項目:setUp');
             makeDocMain('setUp');
         }
-        if (this.testPattern['tearDown']) {
+        if (self.testPattern['tearDown']) {
             self.output('大項目:tearDown');
             makeDocMain('tearDown');
         }
@@ -117,55 +129,293 @@ var WebTest = function (params) {
             makeDocMain(testName);
         }
         
-        this.isMakeDoc = false;
+        self.isMakeDoc = false;
     };
 
-    // エレメント取得
-    this.getElement = function (path) {
+    function makeFrameElement(element, currentWindowId, frame) {
+        return {
+            element : element
+            ,clear : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    this.element.clear();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,click : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    this.element.click();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,findElement : function (by) {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return makeFrameElement(this.element.findElement(by)
+                                            , currentWindowId, frame);
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getAttribute : function (name) {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getAttribute(name);
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getCssValue : function (propertyName) {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getCssValue(propertyName);
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getLocation : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getLocation();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getSize : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getSize();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getTagName : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getTagName();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,getText : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.getText();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,isDisplayed : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.isDisplayed();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,isEnabled : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.isEnabled();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,isSelected : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.isSelected();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,sendKeys : function (keysToSend) {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.sendKeys(keysToSend);
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,submit : function () {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    return this.element.submit();
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+        };
+    }
+
+    /**
+     * ロケーター取得
+     */
+    this.getLocator = function (path) {
         var
         pathList = path.split('/')
-        ,element = this.elements
+        ,element = self.elements
         ,xpath = ''
-        ,by
+        ,locator
         ,i
+        ,frame
+        ,func = function () {
+            try {
+                return self.driver.findElement(locator);
+            } catch (x) {
+                return null;
+            }
+        }
+        ,frameFunc = function () {
+            var
+            currentWindowId = self.driver.getWindowHandle();
+            try {
+                // フレーム切替
+                self.driver.switchTo().frame(frame);
+            
+                // エレメント取得
+                return makeFrameElement(self.driver.findElement(locator)
+                                        ,currentWindowId, frame);
+            } catch (x) {
+                return null;
+            } finally {
+                // フレームを戻す
+                self.driver.switchTo().window(currentWindowId);
+            }
+        }
         ;
 
         for (i = 0; i < pathList.length; i++) {
-            element = element[pathList[i]];
-            if (element.by.ByXPath) {
-                // XPath指定
-                by = By.ByXPath(xpath + element.by.ByXPath);
-                xpath = xpath + element.by.ByXPath;
+            if (element[pathList[i]]) {
+                element = element[pathList[i]];
+                if (element.by) {
+                    if (element.by.ByXPath) {
+                        // XPath指定
+                        xpath = xpath + element.by.ByXPath;
+                        locator = By.ByXPath(xpath);
+                    }
+                    else if (element.by.ById) {
+                        // ID指定
+                        xpath = "//*[@id='" + element.by.ById + "']";
+                        locator = By.ById(element.by.ById);
+                    }
+                    else if (element.by.ByLinkText) {
+                        // その他
+                        locator = By.ByLinkText(element.by.ByLinkText);
+                    }
+                    else if (element.by.frame) {
+                        // frame
+                        frame = element.by.frame;
+                        xpath = '//body';
+                        locator = By.ByXPath(xpath);
+                    }
+                }
             }
-            else if (element.by.ById) {
-                // ID指定
-                by = By.ById(element.by.ById);
+            else {
+                // XPathとみなす
+                xpath = xpath + '/' + pathList[i];
+                locator = By.ByXPath(xpath);
             }
-            else if (element.by.ByLinkText) {
-                // その他
-                by = By.ByLinkText(element.by.ByLinkText);
-            }
-            // 見つかるまで待つ
-            try {
-                element.element = 
-                    new WebDriverWait(this.driver, this.timeout).until(
-                        ExpectedConditions.presenceOfElementLocated(by));
-            } catch (x) {
-                throw new Error("要素がみつかりません:" + path
-                                + '(' + x.message + ')');
-            }
-
-            if (element.by.ById) {
-                xpath = xpath + '//' + element.element.getTagName()
-                    + "[@id='" + element.by.ById + "']";
-            }
-
         }
 
-        // エレメントを返す
-        return element.element;
+        // ロケーターを返す
+        return {
+            frame : frame
+            ,locator : locator
+            ,getElement : frame ? frameFunc : func
+        };
     };
-    // テスト実行
+
+    /**
+     *  エレメント取得
+     */
+    this.getElement = function (path) {
+        // 見つかるまで待つ
+        var
+        locator = self.getLocator(path)
+        ,element
+        ;
+        try {
+            new WebDriverWait(self.driver, self.timeout).until(
+                new com.google.common.base.Function(
+                    {apply : function () {
+                         try {
+                             element = locator.getElement();
+
+                             return element;
+                         } catch (x) {
+                             return false;
+                         }
+                     }}));
+        } catch (x) {
+            throw new Error("要素がみつかりません:" + path
+                            + '(' + x.message + ')');
+        }
+
+        return element;
+    };
+    /**
+     *  テスト実行
+     */
     this.executeTest = function (testName) {
         var
         testList = self.testPattern[testName]
@@ -186,13 +436,14 @@ var WebTest = function (params) {
             testData = testList[i];
 
             if (self.isCapture && testData.command[0] != 'alert') {
-                self.capture(testData, testName, i + 1);
+                self.commandList.capture.func(testData, testName, i + 1);
             }
 
             try {
-                if (self[testData.command[0]]) {
+                if (self.commandList[testData.command[0]]) {
                     // コマンド実行
-                    self[testData.command[0]](testData, testName, i + 1);
+                    self.commandList[testData.command[0]]
+                        .func(testData, testName, i + 1);
                 }
                 else {
                     throw new Error('unknown command ' + testData.command[0]);
@@ -202,13 +453,13 @@ var WebTest = function (params) {
             } catch (x) {
                 status = 'not ok';
                 message = ' ' + x.message;
-                self.capture(testData, testName, i + 1);
+                self.commandList.capture.func(testData, testName, i + 1);
             }
 
             print ('    ' + status + ' ' + (i + 1) + ' - ' + testData.comment
                    + message);
             if (status != 'ok') {
-                if (retryIndex >= 0 && !testData.retryMax > retryCount) {
+                if (retryIndex >= 0 && self.retryMax > retryCount) {
                     retryCount++;
                     print ('retryします。(' + retryCount + '回目)');
                     i = retryIndex - 1;
@@ -218,8 +469,7 @@ var WebTest = function (params) {
                     throw new Error('中断します。');
                 }
             }
-
-            if (retryCommand.indexOf(testData.command[0]) >= 0) {
+            else if (retryCommand.indexOf(testData.command[0]) >= 0) {
                 // retryポイント設定
                 if (retryIndex != i) {
                     retryIndex = i;
@@ -239,285 +489,548 @@ var WebTest = function (params) {
             .join('の');
     };
 
-    // コマンド一覧
-    this.open = function (testData) {
-        if (this.isMakeDoc) {
-            return 'ベースアドレス+「' + testData.command[1] + '」を開く。';
-        }
-
-        this.driver.get(this.baseUrl + testData.command[1]);
-        
-        return null;
-    };
-    this.click = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1])
-                + 'をクリックする。';
-        }
-        this.getElement(testData.command[1]).click();
-
-        return null;
-    };
-    this.quit = function (testData) {
-        if (this.isMakeDoc) {
-            return 'ブラウザを終了する。';
-        }
-
-        this.driver.quit();
-
-        return null;
-    };
-    this.isEnabled = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1]) + 'が'
-                + (testData.command[2] ? '有効' : '無効') + 'であること。';
-        }
-
+    /**
+     * 待機アサート
+     */
+    this.waitAssert = function (expect, func) {
         var
-        element = this.getElement(testData.command[1])
-        ,isEnabled = function () {
-            return element.isEnabled() && element.isDisplayed();  
-        };
+        result;
+        ;
         try {
-            new WebDriverWait(this.driver, this.timeout).until(
+            new WebDriverWait(self.driver, self.timeout).until(
                 new com.google.common.base.Function(
                     {apply : function () {
-                         if (isEnabled() == testData.command[2]) {
-                             return true;
-                         }
-                         return null;
-                     }
-                    }));
-        } catch (x) {
-        }
-        this.assertEquals(testData.command[2], isEnabled());
+                         try {
+                             result = func();
 
-        return null;
-    };
-    this.alert = function (testData) {
-        if (this.isMakeDoc) {
-            return 'アラートダイアログ「' + testData.command[1]
-                + '」が出現すること。（その後「'
-                + ( testData.command[2] ? 'OK' : 'キャンセル')
-                + '」をクリック）';
-        }
-
-        // アラートがでるまで待つ
-        var alert;
-        try {
-            alert = new WebDriverWait(this.driver, this.timeout).until(
-                ExpectedConditions.alertIsPresent());
-        } catch (x) {
-            throw new Error('ダイアログが出現しません。');
-        }
-        if (testData.command[1]) {
-            this.assertEquals(testData.command[1],alert.getText());
-        }
-        if (testData.command[2]) {
-            alert.accept();
-        }
-        else {
-            alert.dismiss();
-        }
-
-        return null;
-    };
-    this.getText = function (testData) {
-        if (this.isMakeDoc) {
-            if (testData.command[2] == '') {
-                return this.makeReadableElement(testData.command[1])
-                    + 'になにも表示されていないこと。';
-            }
-            else {
-                return this.makeReadableElement(testData.command[1])
-                    + 'に「' + testData.command[2] + '」が表示されていること。';
-            }
-        }
-        var
-        element = this.getElement(testData.command[1])
-        ,getText = function () {
-            if (element.getTagName() == 'input') {
-                // inputタグの場合
-                return element.getAttribute('value');
-            }
-            else {
-                return element.getText();
-            }
-        }
-        ;
-        try {
-            new WebDriverWait(this.driver, this.timeout).until(
-                new com.google.common.base.Function(
-                    {apply : function () {
-                         if (getText() == testData.command[2]) {
-                             return true;
-                         }
-                         return null;
-                     }
-                    }));
-        } catch (x) {
-        }
-        this.assertEquals(testData.command[2], getText());
-
-        return null;
-    };
-    this.dragAndDrop = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1])
-                + 'から'
-                + this.makeReadableElement(testData.command[2])
-                + 'にドラッグアンドドロップする。';
-        }
-        var
-        element1 = this.getElement(testData.command[1])
-        ,element2 = this.getElement(testData.command[2]);
-
-        new Actions(this.driver).clickAndHold(element1)
-            .moveToElement(element2).release(element2).build().perform();
-
-        return null;
-    };
-    this.capture = function (testData, testName, no) {
-        if (this.isMakeDoc) {
-            return '画面キャプチャ。';
-        }
-        var
-        baseFilename = this.baseDir + testName + no
-        ,out
-        ,tmpfile
-        ;
-
-        // 画面キャプチャ
-        try {
-            new java.io.File(baseFilename + '.png').delete();
-            
-            if (this.driver.getScreenshotAs) {
-                // ローカルの場合
-                tmpfile = this.driver.getScreenshotAs(OutputType.FILE);
-            }
-            else {
-                // リモートの場合
-                tmpfile = new Augmenter().augment(this.driver)
-                    .getScreenshotAs(OutputType.FILE);
-            }
-            new java.io.File(tmpfile).renameTo(
-                new java.io.File(baseFilename + '.png'));
-        } catch (x) {
-            this.output('png capture');
-            this.output(x.message, this.output.status.warning);
-        }
-        
-        // HTML出力
-        try {
-            out = new java.io.PrintWriter(baseFilename + '.html');
-            out.print(this.driver.getPageSource());
-            out.close();
-        } catch (x) {
-            this.output('html capture');
-            this.output(x.message, this.output.status.warning);
-        }
-
-        this.output('キャプチャ:' + baseFilename);
-
-        return null;
-    };
-    this.selectByValue = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1])
-                + 'の「'
-                + testData.command[2]
-                + '」を選択する。';
-        }
-        var
-        selectElement = this.getElement(testData.command[1])
-        ;
-
-        try {
-            selectElement = selectElement
-                .findElementByXPath('descendant-or-self::select');
-        } catch (x) {
-            throw new Error(testData.command[1] + 'にはselectはありません。');
-        }
-
-        new Select(selectElement).selectByValue(testData.command[2]);
-
-        return null;
-    };
-    this.input = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1])
-                + 'に「'
-                + testData.command[2]
-                + '」を入力する。';
-        }
-        var
-        element = this.getElement(testData.command[1])
-        ;
-
-        element.sendKeys(testData.command[1]);
-
-        return null;
-    };
-    this.getSelected = function (testData) {
-        if (this.isMakeDoc) {
-            return this.makeReadableElement(testData.command[1])
-                + 'が「'
-                + testData.command[2]
-                + '」を選択していること。';
-        }
-        var
-        baseElement = this.getElement(testData.command[1])
-        ,selectElements
-        ,text = ''
-        ;
-
-        selectElements = baseElement
-            .findElementsByXPath('descendant-or-self::select');
-        if (selectElements.size() > 0) {
-            // selectが存在する場合
-            text = convertJavaArrayToJsArray(
-                new Select(selectElements.get(0))
-                    .getAllSelectAllSelectedOptions()).map(
-                        function(x) {
-                            return x.getText();
-                        });
-        }
-        else {
-            selectElements = baseElement
-                .findElementsByXPath('descendant-or-self::tbody');
-            if (selectElements.size() > 0) {
-                // tbodyが存在する場合
-                try {
-                    new WebDriverWait(this.driver, this.timeout).until(
-                        new com.google.common.base.Function(
-                            {apply : function () {
-                                 if (baseElement.findElementsByXPath(
-                                         "descendant-or-self::tr[contains(@class, 'select')]").size() > 0) {
-                                     return true;
-                                 }
-                                 return null;
+                             if (result == expect) {
+                                 return true;
                              }
-                            }));
-                } catch (x) {
-                }
-                text = convertJavaArrayToJsArray(
-                    baseElement.findElementsByXPath(
-                        "descendant-or-self::tr[contains(@class, 'select')]"))
-                    .map(
-                        function(x) {
-                            return x.getText();
-                        }
-                    );
-            }
-            else {
-                throw new Error(testData.command[1]
-                                + 'には選択できる要素はありません。');
-            }
+
+                             return false;
+                         } catch (x) {
+                             return false;
+                         }
+                     }
+                    }));
+        } catch (x) {
         }
 
-        this.assertEquals(testData.command[2], text);
+        self.assertEquals(expect, result);
+    };
 
-        return null;
+    /**
+     * 待機
+     */
+    this.waitExpectedCondition = function (expectedcondition) {
+        try {
+            new WebDriverWait(self.driver, self.timeout).until(
+                expectedcondition
+            );
+        } catch (x) {
+        }
+    };
+    /**
+     * コマンド一覧出力
+     */
+    this.outputCommandList = function () {
+        var
+        command
+        ,data
+        ;
+        for (command in self.commandList) {
+            data = self.commandList[command];
+            self.output(
+                [command, data.comment].concat(data.argList).join('\t')
+            );
+        }
+    };
+
+    // コマンド一覧
+    this.commandList = {
+        open : {
+            comment : '開く'
+            ,argList : ['URL(baseURL以降)']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return 'ベースアドレス+「' + testData.command[1]
+                        + '」を開く。';
+                }
+
+                self.driver.get(self.baseUrl + testData.command[1]);
+        
+                return null;
+            }
+        }
+        ,title : {
+            comment : 'タイトル確認'
+            ,argList : ['タイトル']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return 'タイトルが「' + testData.command[1]
+                        + '」であること。';
+                }
+
+                self.waitExpectedCondition(
+                    ExpectedConditions.titleIs(testData.command[1])
+                );
+
+                self.assertEquals(testData.command[1], self.driver.getTitle());
+
+                return null;
+            }
+        }
+        ,property : {
+            comment : 'プロパティ'
+            ,argList : ['要素', 'プロパティ', '値']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'の' + testData.command[2] + 'が'
+                        + testData.command[3] + 'であること。';
+                }
+                var
+                element = self.getElement(testData.command[1]);
+                self.waitAssert(
+                    testData.command[3]
+                    ,function () {
+                        return eval('element.' + testData.command[2]);
+                    }
+                );
+
+                return null;
+            }
+        }
+        ,click : {
+            comment : 'クリック'
+            ,argList : ['要素']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'をクリックする。';
+                }
+                self.getElement(testData.command[1]).click();
+
+                return null;
+            }
+        }
+        ,quit : {
+            comment : '終了'
+            ,argList : []
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return 'ブラウザを終了する。';
+                }
+
+                self.driver.quit();
+
+                return null;
+            }
+        }
+        ,isEnabled : {
+            comment : '有効/無効チェック'
+            ,argList : ['要素', 'TRUE＝有効/FALSE＝無効']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1]) + 'が'
+                        + (testData.command[2] ? '有効' : '無効')
+                        + 'であること。';
+                }
+
+                var
+                element = self.getElement(testData.command[1])
+                ;
+
+                self.waitAssert(
+                    testData.command[2]
+                    ,function () {
+                        return element.isEnabled() && element.isDisplayed();  
+                    }
+                );
+                
+                return null;
+            }
+        }
+        ,alert : {
+            comment : 'ダイアログ確認'
+            ,argList : ['比較ダイアログ文字列'
+                        ,'TRUE＝「OK」押下/FALSE＝「キャンセル」押下']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return 'アラートダイアログ「' + testData.command[1]
+                        + '」が出現すること。（その後「'
+                        + ( testData.command[2] ? 'OK' : 'キャンセル')
+                        + '」をクリック）';
+                }
+
+                // アラートがでるまで待つ
+                var
+                alert
+                ,message
+                ,retryCount = 0;
+                while (true) {
+                    try {
+                        alert = new WebDriverWait(self.driver, self.timeout)
+                            .until(
+                                ExpectedConditions.alertIsPresent());
+
+                        message = alert.getText();
+
+                        if (testData.command[2]) {
+                            alert.accept();
+                        }
+                        else {
+                            alert.dismiss();
+                        }
+
+                        break;
+                    } catch (x) {
+                        if (++retryCount > 3) {
+                            throw new Error('ダイアログが出現しません。');
+                        }
+                    }
+                }
+
+                if (testData.command[1]) {
+                    self.assertEquals(testData.command[1],message);
+                }
+
+                return null;
+            }
+        }
+        ,getText : {
+            comment : '表示テキスト確認'
+            ,argList : ['要素', '比較テキスト']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    if (testData.command[2] == '') {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'になにも表示されていないこと。';
+                    }
+                    else {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'に「' + testData.command[2]
+                            + '」が表示されていること。';
+                    }
+                }
+                var
+                element = self.getElement(testData.command[1])
+                ;
+                self.waitAssert(
+                    testData.command[2]
+                    ,function () {
+                        if (element.getTagName() == 'input') {
+                            // inputタグの場合
+                            return element.getAttribute('value');
+                        }
+                        else {
+                            return element.getText();
+                        }
+                    }
+                );
+
+                return null;
+            }
+        }
+        ,isDisplay : {
+            comment : '要素表示確認'
+            ,argList : ['要素', 'TRUE=表示/FALSE=非表示']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    if (testData.command[2]) {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'が表示されていること。';
+                    }
+                    else {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'が表示されていないこと。';
+                    }
+                }
+
+                var locator = self.getLocator(testData.command[1]);
+
+                self.waitAssert(
+                    testData.command[2]
+                    ,function () {
+                        var
+                        element = locator.getElement();
+                        ;
+
+                        if (element && element.isDisplayed()) {
+                            // みつかった場合
+                            return true;
+                        }
+                            
+                        // みつからない場合
+                        return false;
+                    }
+                );
+
+                return null;
+            }
+        }
+        ,mouseMove : {
+            comment : 'マウス移動'
+            ,argList : ['要素']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return 'マウスを'
+                        + self.makeReadableElement(testData.command[1])
+                        + 'に移動する。';
+                }
+                var
+                element1 = self.getElement(testData.command[1])
+                ;
+
+                new Actions(self.driver).moveToElement(element1).build()
+                    .perform();
+
+                return null;
+            }
+        }
+        ,dragAndDrop : {
+            comment : 'ドラッグ＆ドロップ'
+            ,argList : ['ドラッグ要素', 'ドロップ要素']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'から'
+                        + self.makeReadableElement(testData.command[2])
+                        + 'にドラッグアンドドロップする。';
+                }
+                var
+                element1 = self.getElement(testData.command[1])
+                ,element2 = self.getElement(testData.command[2]);
+
+                new Actions(self.driver).clickAndHold(element1)
+                    .moveToElement(element2).release(element2).build().perform();
+
+                return null;
+            }
+        }
+        ,capture : {
+            comment : '画面キャプチャ'
+            ,argList : []
+            ,func : function (testData, testName, no) {
+                if (self.isMakeDoc) {
+                    return '画面キャプチャ。';
+                }
+                var
+                baseFilename = self.baseDir + testName + no
+                ,out
+                ,tmpfile
+                ;
+
+                // 画面キャプチャ
+                try {
+                    new java.io.File(baseFilename + '.png').delete();
+                    
+                    if (self.driver.getScreenshotAs) {
+                        // ローカルの場合
+                        tmpfile = self.driver.getScreenshotAs(OutputType.FILE);
+                    }
+                    else {
+                        // リモートの場合
+                        tmpfile = new Augmenter().augment(self.driver)
+                            .getScreenshotAs(OutputType.FILE);
+                    }
+                    new java.io.File(tmpfile).renameTo(
+                        new java.io.File(baseFilename + '.png'));
+                } catch (x) {
+                    self.output('png capture error');
+                    self.output(x.message, self.output.status.warning);
+                }
+        
+                // HTML出力
+                try {
+                    out = new java.io.PrintWriter(baseFilename + '.html');
+                    out.print(self.driver.getPageSource());
+                    out.close();
+                } catch (x) {
+                    self.output('html capture error');
+                    self.output(x.message, self.output.status.warning);
+                }
+
+                self.output('キャプチャ:' + baseFilename);
+
+                return null;
+            }
+        }
+        ,selectByValue : {
+            comment : 'select値選択'
+            ,argList : ['要素', '値']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'の「'
+                        + testData.command[2]
+                        + '」を選択する。';
+                }
+                var
+                selectElement = self.getElement(testData.command[1])
+                ;
+
+                try {
+                    selectElement = selectElement
+                        .findElementByXPath('descendant-or-self::select');
+                } catch (x) {
+                    throw new Error(testData.command[1]
+                                    + 'にはselectはありません。');
+                }
+
+                new Select(selectElement).selectByValue(testData.command[2]);
+
+                return null;
+            }
+        }
+        ,input : {
+            comment : '値入力'
+            ,argList : ['要素', '値']
+            ,func : function (testData) {
+                var
+                keyData
+                ,element
+                ;
+                if (!testData.command[2]) {
+                    throw new Error('引数２が足りません。');
+                }
+                if (testData.command[2].lastIndexOf('Keys.', 0) == 0) {
+                    // キー指定
+                    keyData = eval(testData.command[2]);
+                    if (self.isMakeDoc) {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'に「'
+                            + testData.command[2].split('.', 2)[1]
+                            + 'キー」を入力する。';
+                    }
+                }
+                else {
+                    // 文字列指定
+                    keyData = testData.command[2];
+                    if (self.isMakeDoc) {
+                        return self.makeReadableElement(testData.command[1])
+                            + 'に「'
+                            + keyData
+                            + '」を入力する。';
+                    }
+                }
+        
+
+                element = self.getElement(testData.command[1]);
+
+                element.sendKeys(keyData);
+
+                return null;
+            }
+        }
+        ,clear : {
+            comment : '値クリア'
+            ,argList : ['要素']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'をクリアする。';
+                }
+                var
+                element = self.getElement(testData.command[1])
+                ;
+
+                element.clear();
+
+                return null;
+            }
+        }
+        ,getSelected : {
+            comment : '選択した値の取得'
+            ,argList : ['要素', '値']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'が「'
+                        + testData.command[2]
+                        + '」を選択していること。';
+                }
+                var
+                baseElement = self.getElement(testData.command[1])
+                ,selectElements
+                ,text = ''
+                ,getSelectText
+                ;
+
+                selectElements = baseElement
+                    .findElementsByXPath('descendant-or-self::select');
+                if (selectElements.size() > 0) {
+                    // selectが存在する場合
+                    getSelectText = function () {
+                        return convertJavaArrayToJsArray(
+                            new Select(selectElements.get(0))
+                                .getAllSelectAllSelectedOptions()).map(
+                                    function(x) {
+                                        return x.getText();
+                                    });
+                    };
+                }
+                else {
+                    // select以外
+                    getSelectText = function () {
+                        return convertJavaArrayToJsArray(
+                            baseElement.findElementsByXPath(
+                                "descendant-or-self::*[contains(@class, 'select')]"))
+                            .map(
+                                function(x) {
+                                    return x.getText();
+                                }
+                            ).join('/');
+                    };
+                }
+
+                self.waitAssert(
+                    testData.command[2]
+                    ,getSelectText
+                );
+
+                return null;
+            }
+        }
+        ,nodeCount : {
+            comment : '子要素数チェック'
+            ,argList : ['要素', '子要素数']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'の子要素が'
+                        + testData.command[2]
+                        + '個であること。';
+                }
+                var
+                element = self.getElement(testData.command[1])
+                ;
+
+                self.waitAssert(
+                    testData.command[2]
+                    ,function () {
+                        return element.childNodes.length;
+                    }
+                );
+                
+                return null;
+            }
+        }
+        ,custom : {
+            comment : '拡張コマンド'
+            ,argList : ['ファイル名', '引数1', '引数2']
+            ,func : function (testData) {
+                if (!self.customFunction[testData.command[1]]) {
+                    // 未定義の場合は読み込み
+                    self.customFunction[testData.command[1]]
+                        = eval(readFile(self.initialize.baseDir
+                                        + testData.command[1]));
+                }
+
+                // 実行
+                return self.customFunction[testData.command[1]](testData);
+            }
+        }
     };
 };
 WebTest.prototype = new UnitTest();
