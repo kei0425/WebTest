@@ -16,6 +16,7 @@ try {
     var sync_time = 0;
     var webTest;
     var seleniumrcaddr = 'http://test-cross3.nikkei-r.local:4444/wd/hub';
+    var ignoreLocalBrowserKeyList = ['label', 'browserName', 'rowIndex'];
 
     var localBrowserSelecter = {
         firefox : function (browser) {
@@ -32,7 +33,18 @@ try {
             return new InternetExplorerDriver();
         }
         ,'chrome' : function (browser) {
-            return new ChromeDriver();
+            var
+            capabilities = DesiredCapabilities.chrome()
+            ,key
+            ;
+
+            for (key in browser) {
+                if (ignoreLocalBrowserKeyList.indexOf(key) < 0) {
+                    capabilities.setCapability(key, browser[key]);
+                }
+            }
+
+            return new ChromeDriver(capabilities);
         }
     };
 
@@ -120,24 +132,30 @@ try {
              
              for (i = 0; i < webTest.initialize.browser.length; i++) {
                  browser = webTest.initialize.browser[i];
+                 webTest.browser = browser;
                  webTest.output('browser:' + browser.label);
-                 if (browser.remote) {
-                     // リモートの場合
-                     capability = new DesiredCapabilities();
-                     for (key in webTest.initialize.browser[i]) {
-                         if (key != 'label' && key != 'remote') {
-                             capability[key] = browser[key];
+                 try {
+                     if (browser.remote) {
+                         // リモートの場合
+                         capability = new DesiredCapabilities();
+                         for (key in webTest.initialize.browser[i]) {
+                             if (key != 'label' && key != 'remote') {
+                                 capability[key] = browser[key];
+                             }
                          }
+                         webTest.driver = new RemoteWebDriver(
+                             new java.net.URL(seleniumrcaddr),
+                             capability);
                      }
-                     webTest.driver = new RemoteWebDriver(
-                         new java.net.URL(seleniumrcaddr),
-                         capability);
+                     else {
+                         // ローカルの場合
+                         webTest.driver =
+                             localBrowserSelecter[browser.browserName](browser);
+                     }
+                 } catch (x) {
+                     print('ブラウザの起動に失敗しました。:' + x.message);
                  }
-                 else {
-                     // ローカルの場合
-                     webTest.driver =
-                         localBrowserSelecter[browser.browserName](browser);
-                 }
+
                  webTest.baseDir = webTest.initialize.baseDir
                      + browser.label
                      + java.io.File.separator;
