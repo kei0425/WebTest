@@ -83,6 +83,121 @@ var WebTest = function (params) {
      */
     this.isNextTest = false;
     /**
+     * デバグ用
+     */
+    this.debug = {
+        /**
+         * テスト名
+         */
+        testName : null,
+        /**
+         * テスト番号
+         */
+        testNo : -1,
+        /**
+         * テスト実行
+         */
+        test : function (no) {
+            var debug = {
+                startNo : 0,
+                endNo : 0
+            };
+            if (!self.driver) {
+                print('w.driver = new ChromeDriver();などを実行し、ブラウザを設定してください。');
+                return;
+            }
+
+            if (!self.debug.testName) {
+                print('w.testlist(no)でテスト大項目を指定してください');
+                return;
+            }
+
+            if (self.debug.testNo == -1) {
+                // setUpから実行しなおし
+                if (self.debug.testName != 'setUp' && self.setUp) {
+                    self.setUp();
+                }
+                debug.startNo = 1;
+            }
+            else {
+                debug.startNo = self.debug.testNo + 1;
+            }
+            if (no == null) {
+                // 引数なしは１項目実行
+                debug.endNo = self.debug.testNo + 1;
+            }
+            else {
+                // 引数ありは指定番号まで実行
+                debug.endNo = no;
+            }
+
+            // テスト実行
+            self.debug.testNo = self.executeTest(self.debug.testName, debug);
+        },
+        /**
+         * テストリスト表示
+         */
+        testlist : function (no) {
+            var
+            key
+            ,testName
+            ,list
+            ;
+            if (no) {
+                // 指定されたテストの項目一覧出力
+                for (key in self.testPattern) {
+                    if (key.match('^' + no + ' ')) {
+                        // マッチした
+                        testName = key;
+                        break;
+                    }
+                }
+                if (!testName) {
+                    if (self.testPattern[no]) {
+                        testName = no;
+                    }
+                    else {
+                        print('指定されたNO(' + no + ')は存在しません。');
+                        return;
+                    }
+                }
+                self.debug.testName = testName;
+                self.debug.testNo = -1;
+                self.testPattern[testName].forEach(
+                    function (test, index) {
+                        print((index + 1) + ':' + test.comment + ':' + test.command.join(','));
+                    }
+                );
+            }
+            else {
+                // テスト大項目一覧出力
+                list = [];
+                for (key in self.testPattern) {
+                    list.push(key);
+                }
+                list.sort(
+                    function (a,b) {
+                        var
+                        num_a = a.match(/^\d+/),
+                        num_b = b.match(/^\d+/)
+                        ;
+
+                        if (num_a && num_b) {
+                            return num_b - num_a;
+                        }
+                        return a < b;
+                    }
+                );
+
+                list.forEach(
+                    function (testname) {
+                        print(testname);
+                    }
+                );
+            }
+        }
+    };
+    /**
      *  テスト読み込み
      */
     this.loadTest = function (path) {
@@ -168,6 +283,9 @@ var WebTest = function (params) {
         self.isMakeDoc = false;
     };
 
+    /**
+     * frame切替に対応したエレメントの作成
+     */
     function makeFrameElement(element, currentWindowId, frame) {
         return {
             element : element
@@ -424,14 +542,16 @@ var WebTest = function (params) {
     /**
      *  エレメント取得
      */
-    this.getElement = function (path) {
+    this.getElement = function (path, timeout) {
         // 見つかるまで待つ
         var
         locator = self.getLocator(path)
         ,element
         ;
+
+        timeout = timeout == null ? self.timeout : timeout;
         try {
-            new WebDriverWait(self.driver, self.timeout).until(
+            new WebDriverWait(self.driver, timeout).until(
                 new com.google.common.base.Function(
                     {apply : function () {
                          try {
@@ -452,12 +572,11 @@ var WebTest = function (params) {
     /**
      *  テスト実行
      */
-    this.executeTest = function (testName) {
+    this.executeTest = function (testName, debug) {
         var
         testList = self.testPattern[testName]
         ,testData
         ,i
-        ,j
         ,status
         ,message
         ,retryIndex = -1
@@ -469,9 +588,20 @@ var WebTest = function (params) {
             ,'clear'
             ,'gridRender'
         ]
+        ,start = 0
+        ,end = testList.length
         ;
 
-        for (i = 0; i < testList.length; i++) {
+        if (debug) {
+            if (debug.startNo != null) {
+                start = debug.startNo - 1;
+            }
+            if (debug.endNo != null && debug.endNo < end) {
+                end = debug.endNo;
+            }
+        }
+
+        for (i = start; i < end; i++) {
             self.isRetry = true;
             testData = testList[i];
 
@@ -531,6 +661,10 @@ var WebTest = function (params) {
             }
             else {
                 if (status != 'ok') {
+                    if (debug) {
+                        // デバッグの場合は異常終了した番号の前を返す
+                        return i;
+                    }
                     if (self.isRetry && retryIndex >= 0
                         && self.retryMax > retryCount) {
                         retryCount++;
@@ -551,7 +685,16 @@ var WebTest = function (params) {
                 }
             }
         }
-        print ('    1..' + testList.length);
+        if (!debug) {
+            print ('    1..' + testList.length);
+        }
+        else {
+            // すべて終了した場合
+            return debug.endNo;
+        }
+
+        // デバグ版でない場合は常に0を返す
+        return 0;
     };
 
     /**
@@ -604,6 +747,34 @@ var WebTest = function (params) {
         } catch (x) {
         }
     };
+    /**
+     * 待機関数
+     */
+    this.waitFunc = function (func) {
+        var
+        exception
+        ;
+        try {
+            return new WebDriverWait(self.driver, self.timeout).until(
+                new com.google.common.base.Function(
+                    {apply : function () {
+                         try {
+                             return func();
+                         } catch (x) {
+                             exception = x;
+                             return false;
+                         }
+                     }}));
+        } catch (x) {
+            if (exception) {
+                throw exception;
+            }
+            else {
+                throw new Error('タイムアウト');
+            }
+        }
+    };
+
     /**
      * コマンド一覧出力
      */
@@ -682,10 +853,15 @@ var WebTest = function (params) {
                 testName = arguments.shift;
             }
             else {
-                // 最初のキーを取得
-                for (testName in self.testPattern) {
-                    if (testName.lastIndexOf('1', 0) == 0) {
-                        break;
+                if (self.debug.testName) {
+                    testName = self.debug.testName;
+                }
+                else {
+                    // 最初のキーを取得
+                    for (testName in self.testPattern) {
+                        if (testName.lastIndexOf('1', 0) == 0) {
+                            break;
+                        }
                     }
                 }
             }
@@ -780,22 +956,21 @@ var WebTest = function (params) {
             comment : '「要素」をクリックする。'
             ,argList : ['要素']
             ,func : function (testData) {
+                var exception = null;
+
                 if (self.isMakeDoc) {
                     return self.makeReadableElement(testData.command[1])
                         + 'をクリックする。';
                 }
-                new WebDriverWait(self.driver, self.timeout).until(
-                    new com.google.common.base.Function(
-                        {apply : function () {
-                             try {
-                                 self.getElement(testData.command[1]).click();
 
-                                 return true;
-                             } catch (x) {
-                                 return false;
-                             }
-                         }}));
-
+                self.waitFunc(
+                    function () {
+                        // 指定要素をクリック
+                        self.getElement(testData.command[1]).click();
+                        // 成功
+                        return true;
+                    }
+                );
 
                 return null;
             }
@@ -1517,6 +1692,9 @@ var WebTest = function (params) {
                 element = self.getElement(testData.command[1])
                 ;
 
+                // 事前にレンダリング
+                self.commandList.gridRender.func(testData);
+
                 self.waitAssert(
                     testData.command[2]
                     ,function () {
@@ -1545,6 +1723,12 @@ var WebTest = function (params) {
                 dummyRowXPath = testData.command[1]
                     + "//tr[td/@style='display: none;']/td[1]"
                 ,dummyRowElement
+                ,gridElement = self.getElement(testData.command[1])
+                ,gridId = gridElement.getAttribute('id')
+                ,scrollCommand = "$('" + gridId + "').childNodes[1].scrollTop"
+                ,scrollNode = self.getElement(testData.command[1] + '/div[2]')
+                ,scrollTop = scrollNode.getAttribute('scrollTop')
+                ,scrollNodeY = scrollNode.getLocation().getY()
                 ;
                 if (self.driver.getCapabilities().getBrowserName()
                     == 'internet explorer') {
@@ -1554,16 +1738,37 @@ var WebTest = function (params) {
                 }
                 try {
                     while (true) {
-                        dummyRowElement =  self.getElement(dummyRowXPath);
+                        dummyRowElement =  self.getElement(dummyRowXPath, 0);
 
-                        try {
-                            dummyRowElement.click();
-                        } catch (x) {
-                        }
-                        java.lang.Thread.sleep(500);
+                        self.driver.executeScript(
+                            scrollCommand
+                                + '+='
+                                + (dummyRowElement.getLocation().getY()
+                                   - scrollNodeY)
+                        );
                     }
                 } catch (x) {
+                    // 元に戻す
+                    self.driver.executeScript(
+                        scrollCommand
+                            + '='
+                            + scrollTop
+                    );
                 }
+
+                return null;
+            }
+        }
+        ,sleep : {
+            comment : '「スリープm秒」スリープする。'
+            ,argList : ['スリープm秒']
+            ,func : function (testData) {
+                if (self.isMakeDoc) {
+                    return self.makeReadableElement(testData.command[1])
+                        + 'm秒スリープする。';
+                }
+
+                java.lang.Thread.sleep(testData.command[1]);
 
                 return null;
             }

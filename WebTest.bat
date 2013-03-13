@@ -4,5 +4,6 @@ java -cp "%RHINO_HOME%/js.jar;%SELENIUM_HOME%/selenium-java-2.28.0.jar;%SELENIUM
 goto :EOF
 
 :NONE
-java -cp "%RHINO_HOME%/js.jar;%SELENIUM_HOME%/selenium-java-2.28.0.jar;%SELENIUM_HOME%/libs/*" org.mozilla.javascript.tools.shell.Main
+java -cp "%RHINO_HOME%/js.jar;%SELENIUM_HOME%/selenium-java-2.28.0.jar;%SELENIUM_HOME%/libs/*" org.mozilla.javascript.tools.shell.Main -f %~dp0\load.js -f %~dp0\loader.js -f -
+
 
