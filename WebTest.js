@@ -32,7 +32,40 @@ function convertJavaArrayToJsArray(javaArray) {
 }
 
 var WebTest = function (params) {
-    var self = this;
+    var
+    self = this
+    ,seleniumrcaddr = 'http://test-cross3.nikkei-r.local:4444/wd/hub'
+    ,ignoreLocalBrowserKeyList = ['label', 'remote', 'rowIndex']
+    ,localBrowserSelecter = {
+        firefox : function (browser) {
+            if (browser.firefox_binary) {
+                return new FirefoxDriver(
+                    new FirefoxBinary(new java.io.File(browser.firefox_binary))
+                    ,new FirefoxProfile());
+            }
+            else {
+                return new FirefoxDriver();
+            }
+        }
+        ,'internet explorer' : function (browser) {
+            return new InternetExplorerDriver();
+        }
+        ,'chrome' : function (browser) {
+            var
+            capabilities = DesiredCapabilities.chrome()
+            ,key
+            ;
+
+            for (key in browser) {
+                if (ignoreLocalBrowserKeyList.indexOf(key) < 0) {
+                    capabilities.setCapability(key, browser[key]);
+                }
+            }
+
+            return new ChromeDriver(capabilities);
+        }
+    }
+    ;
     params = params || {};
     /**
      * browser
@@ -281,6 +314,68 @@ var WebTest = function (params) {
         }
         
         self.isMakeDoc = false;
+    };
+
+    /**
+     * ドライバ設定
+     */
+    this.setDriver = function (arg) {
+        var
+        browser
+        ,driver
+        ,capability
+        ;
+        if (isNaN(arg)) {
+            // ラベル指定
+            this.initialize.browser.some(
+                function (x) {
+                    if (x.label == arg) {
+                        browser = x;
+                        return true;
+                    }
+
+                    return false;
+                }
+            );
+        }
+        else {
+            // 数値指定
+            if (0 <= arg && arg < this.initialize.browser.length) {
+                browser = this.initialize.browser[arg];
+            }
+        }
+
+        if (!browser) {
+            print ('指定された' + arg + 'に対応するブラウザはありません');
+            return '';
+        }
+
+        try {
+            if (browser.remote) {
+                // リモートの場合
+                capability = new DesiredCapabilities();
+                for (key in browser) {
+                    if (ignoreLocalBrowserKeyList.indexOf(key) < 0) {
+                        capability[key] = browser[key];
+                    }
+                }
+                driver = new RemoteWebDriver(
+                    new java.net.URL(seleniumrcaddr),
+                    capability);
+            }
+            else {
+                // ローカルの場合
+                driver = localBrowserSelecter[browser.browserName](browser);
+            }
+        } catch (x) {
+            print('ブラウザの起動に失敗しました。:' + x.message);
+            return '';
+        }
+
+        this.driver = driver;
+        this.browser = browser;
+
+        return browser.label;
     };
 
     /**
