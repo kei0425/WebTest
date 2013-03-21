@@ -78,7 +78,7 @@ var UnitTest = function () {
                           num_b = b.match(/^\d+/)
                           ;
 
-                          return num_b - num_a;
+                          return num_a - num_b;
                       });
 
         // é¿çs
@@ -100,19 +100,17 @@ var UnitTest = function () {
         for (i = 0; i < testCount; i++) {
             testName = testList[i];
 
-            if (hasSetup) {
-                if (!testExec('setUp')) {
-                    break;
+            try {
+                if (hasSetup) {
+                    if (!testExec('setUp')) {
+                        continue;
+                    }
                 }
-            }
 
-            if (!testExec(testName)) {
-                break;
-            }
-
-            if (hasTeardown) {
-                if (!testExec('tearDown')) {
-                    break;
+                testExec(testName);
+            } finally {
+                if (hasTeardown) {
+                    testExec('tearDown');
                 }
             }
         }

@@ -237,6 +237,8 @@ var WebTest = function (params) {
         var
         testJson
         ,testName
+        ,customCommand
+        ,command
         ;
 
         eval('testJson = ' + readFile(path));
@@ -252,6 +254,15 @@ var WebTest = function (params) {
                     self.executeTest(name);
                 };
             }(testName);
+        }
+
+        // カスタムコマンドロード
+        if (self.initialize.customcommand) {
+            eval(readFile(self.initialize.customcommand));
+            
+            for (command in customCommand) {
+                self.commandList[command] = customCommand[command];
+            }
         }
     };
 
@@ -416,6 +427,25 @@ var WebTest = function (params) {
                     // 実行
                     return makeFrameElement(this.element.findElement(by)
                                             , currentWindowId, frame);
+                } finally {
+                    // フレームを戻す
+                    self.driver.switchTo().window(currentWindowId);
+                }
+            }
+            ,findElements : function (by) {
+                try {
+                    // フレーム切替
+                    self.driver.switchTo().frame(frame);
+            
+                    // 実行
+                    
+                    return convertJavaArrayToJsArray(
+                        this.element.findElements(by)).map(
+                            function (node) {
+                                return makeFrameElement(
+                                    node, currentWindowId, frame);
+                            }
+                        );
                 } finally {
                     // フレームを戻す
                     self.driver.switchTo().window(currentWindowId);
@@ -1347,7 +1377,7 @@ var WebTest = function (params) {
 
                 try {
                     selectElement = selectElement
-                        .findElementByXPath('descendant-or-self::select');
+                        .findElement(By.ByXPath('descendant-or-self::select'));
                 } catch (x) {
                     throw new Error(testData.command[1]
                                     + 'にはselectはありません。');
@@ -1407,6 +1437,10 @@ var WebTest = function (params) {
         
                 element = self.getElement(testData.command[1]);
 
+                // いったんフォーカス移動
+                element.sendKeys('');
+                java.lang.Thread.sleep(200);
+                
                 element.sendKeys(keyData);
 
                 return null;
@@ -1462,8 +1496,9 @@ var WebTest = function (params) {
                     // select以外
                     getSelectText = function () {
                         return convertJavaArrayToJsArray(
-                            baseElement.findElementsByXPath(
-                                "descendant-or-self::*[contains(@class, 'select')]"))
+                            baseElement.findElements(
+                                By.ByXPath(
+                                    "descendant-or-self::*[contains(@class, 'select')]")))
                             .map(
                                 function(x) {
                                     return x.getText();
@@ -1509,7 +1544,7 @@ var WebTest = function (params) {
                 self.waitAssert(
                     testData.command[2]
                     ,function () {
-                        return element.findElementsByXPath('*').size();
+                        return element.findElements(By.ByXPath('*')).size();
                     }
                 );
                 
@@ -1793,13 +1828,13 @@ var WebTest = function (params) {
                 self.waitAssert(
                     testData.command[2]
                     ,function () {
-                        return convertJavaArrayToJsArray(
-                            element.findElementsByXPath(
-                                'descendant-or-self::tr')).filter(
-                                    function (node) {
-                                        return node.getText().trim() != '';
-                                    }
-                                ).length - 1;
+                        // 事前にレンダリング
+                        self.commandList.gridRender.func(testData);
+
+                        return element.findElements(
+                            By.ByXPath(
+                                'div[2]//tr[td[string-length(text())>1]]'
+                            )).size();
                     }
                 );
 
@@ -1815,30 +1850,23 @@ var WebTest = function (params) {
                         + 'のグリッドをレンダリングする。';
                 }
                 var
-                dummyRowXPath = testData.command[1]
-                    + "//tr[td/@style='display: none;']/td[1]"
-                ,dummyRowElement
-                ,gridElement = self.getElement(testData.command[1])
+                gridElement = self.getElement(testData.command[1])
                 ,gridId = gridElement.getAttribute('id')
                 ,scrollCommand = "$('" + gridId + "').childNodes[1].scrollTop"
                 ,scrollNode = self.getElement(testData.command[1] + '/div[2]')
                 ,scrollTop = scrollNode.getAttribute('scrollTop')
                 ,scrollNodeY = scrollNode.getLocation().getY()
+                ,locationY
                 ;
-                if (self.driver.getCapabilities().getBrowserName()
-                    == 'internet explorer') {
-                    // IEの場合はパスが異る
-                    dummyRowXPath = testData.command[1]
-                        + "//tr[@idd='__filler__']/td[1]";
-                }
+
                 try {
                     while (true) {
-                        dummyRowElement =  self.getElement(dummyRowXPath, 0);
+                        locationY = self.getGridDummyRowLocationY(gridElement);
 
                         self.driver.executeScript(
                             scrollCommand
                                 + '+='
-                                + (dummyRowElement.getLocation().getY()
+                                + (locationY
                                    - scrollNodeY)
                         );
                     }
@@ -1859,7 +1887,7 @@ var WebTest = function (params) {
             ,argList : ['スリープm秒']
             ,func : function (testData) {
                 if (self.isMakeDoc) {
-                    return self.makeReadableElement(testData.command[1])
+                    return testData.command[1]
                         + 'm秒スリープする。';
                 }
 
@@ -1882,6 +1910,53 @@ var WebTest = function (params) {
                 // 実行
                 return self.customFunction[testData.command[1]](testData);
             }
+        }
+    };
+
+    // ブラウザ毎の処理
+    /**
+     * スマートレンダリングダミー行取得
+     */
+    this.getGridDummyRow = function (gridNode) {
+        var
+        dummyRowXPath = "descendant-or-self::tr[td/@style='display: none;']/td[1]"
+        ;
+
+        if (self.driver.getCapabilities().getBrowserName()
+            == 'internet explorer') {
+            // IEの場合はパスが異る
+            dummyRowXPath = "descendant-or-self::tr[@idd='__filler__']/td[1]";
+        }
+
+        try {
+            return gridNode.findElement(By.ByXPath(dummyRowXPath));
+        } catch (x) {
+            return null;
+        }
+    };
+    
+    /**
+     * スマートレンダリングダミー行取得
+     */
+    this.getGridDummyRowLocationY = function (gridNode) {
+        var
+        dummyRow = self.getGridDummyRow(gridNode)
+        ;
+
+        if (!dummyRow) {
+            throw new Error('not found');
+        }
+
+        if (self.driver.getCapabilities().getBrowserName()
+            == 'firefox') {
+            // スクロール考慮しないため算出
+            return dummyRow.getLocation().getY()
+                - dummyRow.findElement(By.ByXPath('../../../..'))
+                .getAttribute('scrollTop');
+        }
+        else {
+            // スクロールを考慮した値が帰る
+            return dummyRow.getLocation().getY();
         }
     };
 };

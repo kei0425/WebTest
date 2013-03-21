@@ -60,13 +60,12 @@ try {
 
     load("WebTest.js");
     webTest = new WebTest({capture : isCapture, retryMax : retryMax});
+    webTest.loadTest(testfile);
+
     if (isCommandList) {
         webTest.outputCommandList();
-    }
-    if (arguments.length == 0) {
         quit();
     }
-    webTest.loadTest(testfile);
 
     if (isMakeDoc) {
         webTest.makeDoc();
