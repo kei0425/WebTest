@@ -243,6 +243,21 @@ var WebTest = function (params) {
 
         eval('testJson = ' + readFile(path));
         self.initialize = testJson.initialize;
+        // 旧フォーマット対応
+        if (self.initialize.browser
+            && !self.initialize.testbrowser
+            && !self.initialize.browserlist) {
+            self.initialize.browserlist = {};
+            self.initialize.testbrowser = self.initialize.browser.map(
+                function (browser) {
+                    var
+                    label = browser.label;
+                    delete browser.label;
+                    self.initialize.browserlist[label] = browser;
+                    return label;
+                }
+            );
+        }
         self.elements = testJson.initialize.elements;
         self.baseUrl = testJson.initialize.baseUrl;
         self.baseDir = testJson.initialize.baseDir;
@@ -335,24 +350,18 @@ var WebTest = function (params) {
         browser
         ,driver
         ,capability
+        ,label
         ;
         if (isNaN(arg)) {
             // ラベル指定
-            this.initialize.browser.some(
-                function (x) {
-                    if (x.label == arg) {
-                        browser = x;
-                        return true;
-                    }
-
-                    return false;
-                }
-            );
+            label = arg;
+            browser = this.initialize.browserlist[label];
         }
         else {
             // 数値指定
-            if (0 <= arg && arg < this.initialize.browser.length) {
-                browser = this.initialize.browser[arg];
+            if (0 <= arg && arg < this.initialize.testbrowser.length) {
+                label = this.initialize.testbrowser[arg];
+                browser = this.initialize.browserlist[label];
             }
         }
 
@@ -386,7 +395,7 @@ var WebTest = function (params) {
         this.driver = driver;
         this.browser = browser;
 
-        return browser.label;
+        return label;
     };
 
     /**
