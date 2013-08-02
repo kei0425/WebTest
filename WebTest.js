@@ -715,6 +715,7 @@ var WebTest = function (params) {
         ,message
         ,retryIndex = -1
         ,retryCount
+        ,isSetRetryPoint = false
         ,retryCommand = [
             'open'
             ,'click'
@@ -733,6 +734,15 @@ var WebTest = function (params) {
             if (debug.endNo != null && debug.endNo < end) {
                 end = debug.endNo;
             }
+        }
+
+        // リトライポイント設定チェック
+        if (testList.some(
+                function (x) {
+                    return x.retry_point;
+                }
+            )) {
+            isSetRetryPoint = true;
         }
 
         for (i = start; i < end; i++) {
@@ -810,9 +820,12 @@ var WebTest = function (params) {
                         throw new Error('中断します。');
                     }
                 }
-                else if (retryCommand.indexOf(testData.command[0]) >= 0) {
+                else if (
+                    isSetRetryPoint && testData.retry_point ||
+                    !isSetRetryPoint && retryCommand.indexOf(testData.command[0]) >= 0) {
                     // retryポイント設定
                     if (retryIndex != i) {
+                        print ('リトライポイント設定:' + testData.comment);
                         retryIndex = i;
                         retryCount = 0;
                     }
@@ -835,9 +848,25 @@ var WebTest = function (params) {
      * エレメントを読み易い形に変更
      */
     this.makeReadableElement = function (path) {
-        return path.split('/')
-            .map(function(x){return '「' + x + '」';})
-            .join('の');
+        var
+        element = self.elements,
+        pathList = path.split('/'),
+        retList = [],
+        i
+        ;
+
+        for (i = 0; i < pathList.length; i++) {
+            if (element[pathList[i]]) {
+                retList.push('「' + pathList[i] + '」');
+                element = element[pathList[i]];
+            }
+            else {
+                retList.push('XPATH:/' + pathList.splice(i).join('/'));
+                break;
+            }
+        }
+
+        return retList.join('の');
     };
 
     /**
@@ -1200,10 +1229,11 @@ var WebTest = function (params) {
                 var
                 element
                 ,match
-                ,expect = testData.command[2]
+                ,arg2 = testData.command[2] || ''
+                ,expect = arg2
                 ;
 
-                match = testData.command[2].match(/^(\$[^(]+)(\([^(]*\))$/);
+                match = arg2.match(/^(\$[^(]+)(\([^(]*\))$/);
                 if (match && self.subcommand[match[1]]) {
                     // 関数指定
                     expect = eval('self.subcommand["'
@@ -1217,13 +1247,13 @@ var WebTest = function (params) {
                     }
                 }
                 else if (self.isMakeDoc) {
-                    if (testData.command[2] == '') {
+                    if (arg2 == '') {
                         return self.makeReadableElement(testData.command[1])
                             + 'になにも表示されていないこと。';
                     }
                     else {
                         return self.makeReadableElement(testData.command[1])
-                            + 'に「' + testData.command[2]
+                            + 'に「' + arg2
                             + '」が表示されていること。';
                     }                    
                 }
